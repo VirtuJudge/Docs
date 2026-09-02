@@ -2,6 +2,6 @@
 status: accepted
 ---
 
-# Use a modular backend and separate AI runtime
+# Use a layered backend and separate AI worker
 
-The FastAPI backend will be a layered modular monolith that owns product state and orchestration, while AI/ML runs as a separate deployable compute plane. A backend microservice split would cost too much during the MVP, but keeping model workloads in the API process would couple API availability and deployment to long-running, resource-heavy, provider-dependent pipelines.
+The backend will be one four-layer FastAPI application, while AI/ML runs as one separate worker with a deep pipeline interface. More backend modules or AI services would cost too much during the ten-day MVP, but keeping model workloads inside the API process would still couple API availability to long-running, resource-heavy processing.
