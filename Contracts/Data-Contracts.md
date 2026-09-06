@@ -83,6 +83,8 @@ Contains `team_name`, inviter display name, invited email in masked form, `expir
 
 ### Asset
 
+Backend implementation uses RFC 4122 UUID strings for `AssetId`, `AssetVersionId`, `ProjectId`, `UserId`, and `TeamId` across current asset REST endpoints for compatibility with BE-01 identity models.
+
 | Field | Type | Required | Notes |
 |---|---|---:|---|
 | `id` | `AssetId` | Yes | Logical asset |
@@ -98,6 +100,7 @@ Contains `team_name`, inviter display name, invited email in masked form, `expir
 | `created_by` | `UserId` | Yes | Uploader |
 | `created_at` | timestamp | Yes | UTC |
 | `retention_expires_at` | timestamp | Raw media only | Default 30-day boundary |
+| `rejection_reason` | string | When rejected | Safe validation failure code (for example `corrupt_pdf` or `size_mismatch`) |
 
 ### UploadIntent
 
@@ -108,14 +111,15 @@ Contains `team_name`, inviter display name, invited email in masked form, `expir
   "upload_url": "https://short-lived-signed-url.example",
   "method": "PUT",
   "required_headers": {
-    "content-type": "video/mp4"
+    "content-type": "application/pdf",
+    "if-none-match": "*"
   },
   "expires_at": "2026-09-02T12:45:00Z",
-  "maximum_size_bytes": 524288000
+  "maximum_size_bytes": 26214400
 }
 ```
 
-Signed URLs are secrets and must not be stored in frontend logs, notifications, analytics, or telemetry.
+Browsers automatically set the `Content-Length` header from upload Blob length. The signed PUT enforces `Content-Length`, `Content-Type`, and conditional header `If-None-Match: *` via `X-Amz-SignedHeaders` to prevent replacing existing objects. Signed URLs are secrets and must not be stored in frontend logs, notifications, analytics, or telemetry.
 
 ### ObjectReference
 
@@ -131,7 +135,7 @@ An `ObjectReference` never contains a permanent object key or public URL.
 
 ### DownloadIntent
 
-Contains a short-lived signed `download_url`, `expires_at`, verified `media_type`, `size_bytes`, and safe suggested `file_name`. It is returned only after normal resource authorization.
+Contains a short-lived signed `download_url`, `expires_at`, verified `media_type`, `size_bytes`, and safe suggested `file_name`. Issued only for assets in `verified` state after normal resource authorization.
 
 ## Practice Session
 

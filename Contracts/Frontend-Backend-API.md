@@ -46,26 +46,40 @@ Invitation creation schedules a Gmail send after commit. A Gmail-delivery failur
 
 ## Assets and direct uploads
 
+Backend endpoints use RFC 4122 UUID strings for `project_id`, `asset_id`, `version_id`, `user_id`, and `team_id` for compatibility with BE-01 persistence.
+
 ### Create upload intent
 
 `POST /projects/{project_id}/assets/upload-intents`
 
-Headers: `Idempotency-Key` required.
+Headers: `Idempotency-Key` required. Scoped to actor, project, operation, and key.
 
 ```json
 {
-  "kind": "presentation_video",
-  "file_name": "demo-day.mp4",
-  "declared_media_type": "video/mp4",
-  "declared_size_bytes": 241172480
+  "kind": "supporting_document",
+  "file_name": "demo-slides.pdf",
+  "declared_media_type": "application/pdf",
+  "declared_size_bytes": 241172
 }
 ```
 
-Returns `201 UploadIntent`. Allowed inputs are:
+Returns `201 UploadIntent`.
 
+Allowed inputs across the full product are:
 - presentation: MP4 or WebM, one per session, at most 500 MB and 10 minutes;
 - supporting document: PDF or PPTX, at most five per session and 25 MB each;
 - answer audio: browser-supported audio normalized by ingestion, recommended maximum 2 minutes.
+
+In the initial PDF slice, only `supporting_document` with `.pdf` extension and `application/pdf` media type up to 25 MiB is accepted.
+
+The returned upload URL is a signed S3 SigV4 PUT URL. Its `X-Amz-SignedHeaders` enforces `content-length`, `content-type`, and `if-none-match: *` to prevent object overwrite. Browsers populate `Content-Length` automatically from the upload Blob length.
+
+Important errors (returned as `application/problem+json`):
+- `404 not_found`: unknown project, outsider user, or project erasure requested (concealment)
+- `409 conflict`: idempotency key reused with different request payload
+- `413 payload_too_large`: declared size exceeds 25 MiB limit
+- `415 unsupported_media_type`: unsupported kind, non-PDF file extension, or unsupported media type
+- `422 validation_failed`: invalid request fields or non-positive size
 
 ### Complete upload
 
@@ -75,21 +89,34 @@ Headers: `Idempotency-Key` required.
 
 ```json
 {
-  "checksum": "sha256:...",
-  "size_bytes": 241172480
+  "checksum": "sha256:4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+  "size_bytes": 241172
 }
 ```
 
-Returns `202 Asset` in `uploaded` or `verified` state. Verification may be asynchronous for media duration and content signature.
+The server streams uploaded bytes from storage to bounded temporary disk, verifies observed length, recalculates SHA-256, and inspects PDF structure and page tree using a parser.
+
+Returns `202 Asset` in `verified` state upon success.
+
+Repeated completions returning the same verified version succeed when checksum and size match. Conflicting completions or attempts to complete an already rejected version return `409 conflict`.
+
+When validation fails, the version is committed as `rejected` with a safe `rejection_reason` before returning `422 unprocessable_entity`.
+
+Important errors (returned as `application/problem+json`):
+- `404 not_found`: unknown asset or version, outsider user, or project erasure requested
+- `409 conflict`: mismatch against existing verified version, or version already rejected
+- `413 payload_too_large`: observed size exceeds limit
+- `422 unprocessable_entity`: invalid values, checksum mismatch, size mismatch, corrupt PDF, or encrypted PDF
+- `503 service_unavailable`: transient object storage connectivity failure or verifier unavailable
 
 ### Asset endpoints
 
-| Method | Path | Success | Notes |
-|---|---|---|---|
-| `GET` | `/projects/{project_id}/assets` | `200 Page<Asset>` | Filter by `kind` and `state` |
-| `GET` | `/assets/{asset_id}` | `200 Asset` | Team permission required |
-| `POST` | `/assets/{asset_id}/download-intents` | `200 DownloadIntent` | Short-lived signed GET URL |
-| `DELETE` | `/assets/{asset_id}` | `202 ErasureRequest` | Fails when immutable active manifest still requires asset |
+| Method | Path | Request | Success | Notes |
+|---|---|---|---|---|
+| `GET` | `/projects/{project_id}/assets` | query `cursor`, `limit` (1-100, default 20), `kind`, `state` | `200 Page<Asset>` | Filter by `kind` and `state` |
+| `GET` | `/assets/{asset_id}` | None | `200 Asset` | Team permission required |
+| `POST` | `/assets/{asset_id}/download-intents` | None | `200 DownloadIntent` | Short-lived signed GET URL for verified assets |
+| `DELETE` | `/assets/{asset_id}` | None | `202 ErasureRequest` | Fails when immutable active manifest still requires asset |
 
 ## Practice Sessions
 
