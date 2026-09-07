@@ -102,6 +102,28 @@ Backend implementation uses RFC 4122 UUID strings for `AssetId`, `AssetVersionId
 | `retention_expires_at` | timestamp | Raw media only | Default 30-day boundary |
 | `rejection_reason` | string | When rejected | Safe validation failure code (for example `corrupt_pdf` or `size_mismatch`) |
 
+### AssetVersion
+
+Represents a specific immutable uploaded version of a logical asset.
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| `id` | `AssetVersionId` | Yes | Immutable version identifier |
+| `asset_id` | `AssetId` | Yes | Parent logical asset |
+| `version_number` | integer | Yes | Monotonically increasing sequence number starting at 1 |
+| `state` | enum | Yes | `pending_upload`, `uploaded`, `verified`, `rejected`, `deleting`, `deleted` |
+| `file_name` | string | Yes | Display file name for this specific version |
+| `declared_media_type` | string | Yes | Declared type before upload |
+| `declared_size_bytes` | integer | Yes | Declared size before upload |
+| `media_type` | string | Yes after upload | Verified server-side media type |
+| `size_bytes` | integer | Yes after upload | Verified byte length |
+| `checksum` | checksum | Yes after upload | SHA-256 integrity checksum |
+| `duration_ms` | integer | Video/audio only | Verified duration |
+| `created_by` | `UserId` | Yes | Uploader of this version |
+| `created_at` | timestamp | Yes | UTC creation timestamp |
+| `completed_at` | timestamp | When finished | UTC completion timestamp |
+| `rejection_reason` | string | When rejected | Safe validation failure code (for example `corrupt_pptx` or `size_mismatch`) |
+
 ### UploadIntent
 
 ```json

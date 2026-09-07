@@ -70,7 +70,7 @@ Allowed inputs across the full product are:
 - supporting document: PDF or PPTX, at most five per session and 25 MB each;
 - answer audio: browser-supported audio normalized by ingestion, recommended maximum 2 minutes.
 
-In the initial PDF slice, only `supporting_document` with `.pdf` extension and `application/pdf` media type up to 25 MiB is accepted.
+In the initial slice, `supporting_document` accepts `.pdf` (`application/pdf`) and `.pptx` (`application/vnd.openxmlformats-officedocument.presentationml.presentation`) up to 25 MiB.
 
 The returned upload URL is a signed S3 SigV4 PUT URL. Its `X-Amz-SignedHeaders` enforces `content-length`, `content-type`, and `if-none-match: *` to prevent object overwrite. Browsers populate `Content-Length` automatically from the upload Blob length.
 
@@ -78,7 +78,30 @@ Important errors (returned as `application/problem+json`):
 - `404 not_found`: unknown project, outsider user, or project erasure requested (concealment)
 - `409 conflict`: idempotency key reused with different request payload
 - `413 payload_too_large`: declared size exceeds 25 MiB limit
-- `415 unsupported_media_type`: unsupported kind, non-PDF file extension, or unsupported media type
+- `415 unsupported_media_type`: unsupported kind, non-PDF/non-PPTX file extension, or unsupported media type
+- `422 validation_failed`: invalid request fields or non-positive size
+
+### Create version upload intent
+
+`POST /assets/{asset_id}/versions/upload-intents`
+
+Headers: `Idempotency-Key` required. Scoped to actor, project, asset, operation, and key.
+
+```json
+{
+  "file_name": "updated-slides.pptx",
+  "declared_media_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "declared_size_bytes": 524288
+}
+```
+
+Returns `201 UploadIntent`. Only supporting documents accept replacement. A replacement creates a new immutable version with unique number and storage key under the same logical asset. The previously verified version remains available and current while replacement is pending or rejected. Advancing the logical asset current version occurs only on successful newer completion.
+
+Important errors (returned as `application/problem+json`):
+- `404 not_found`: unknown asset, outsider user, or project erasure requested
+- `409 conflict`: idempotency key reused with different request payload, or asset is not a supporting document
+- `413 payload_too_large`: declared size exceeds 25 MiB limit
+- `415 unsupported_media_type`: unsupported extension or media type
 - `422 validation_failed`: invalid request fields or non-positive size
 
 ### Complete upload
@@ -94,19 +117,19 @@ Headers: `Idempotency-Key` required.
 }
 ```
 
-The server streams uploaded bytes from storage to bounded temporary disk, verifies observed length, recalculates SHA-256, and inspects PDF structure and page tree using a parser.
+The server streams uploaded bytes from storage to bounded temporary disk, verifies observed length, recalculates SHA-256, and inspects PDF structure and page tree or OOXML presentation package relationships and slide definitions using an isolated worker parser.
 
-Returns `202 Asset` in `verified` state upon success.
+Returns `202 Asset` in `verified` state upon success, representing the exact version completed.
 
-Repeated completions returning the same verified version succeed when checksum and size match. Conflicting completions or attempts to complete an already rejected version return `409 conflict`.
+Repeated completions returning the same verified version succeed when checksum and size match. Conflicting completions or attempts to complete an already rejected version return `409 conflict`. Replays after completion do not alter records.
 
-When validation fails, the version is committed as `rejected` with a safe `rejection_reason` before returning `422 unprocessable_entity`.
+When validation fails, the version is committed as `rejected` with a safe `rejection_reason` before returning `422 unprocessable_entity`. If the asset previously had a verified version, that version remains current.
 
 Important errors (returned as `application/problem+json`):
 - `404 not_found`: unknown asset or version, outsider user, or project erasure requested
 - `409 conflict`: mismatch against existing verified version, or version already rejected
 - `413 payload_too_large`: observed size exceeds limit
-- `422 unprocessable_entity`: invalid values, checksum mismatch, size mismatch, corrupt PDF, or encrypted PDF
+- `422 unprocessable_entity`: invalid values, checksum mismatch, size mismatch, corrupt document, or encrypted document
 - `503 service_unavailable`: transient object storage connectivity failure or verifier unavailable
 
 ### Asset endpoints
@@ -115,7 +138,11 @@ Important errors (returned as `application/problem+json`):
 |---|---|---|---|---|
 | `GET` | `/projects/{project_id}/assets` | query `cursor`, `limit` (1-100, default 20), `kind`, `state` | `200 Page<Asset>` | Filter by `kind` and `state` |
 | `GET` | `/assets/{asset_id}` | None | `200 Asset` | Team permission required |
-| `POST` | `/assets/{asset_id}/download-intents` | None | `200 DownloadIntent` | Short-lived signed GET URL for verified assets |
+| `POST` | `/assets/{asset_id}/versions/upload-intents` | metadata sans kind + `Idempotency-Key` | `201 UploadIntent` | Supporting documents only |
+| `GET` | `/assets/{asset_id}/versions` | query `cursor`, `limit` (1-100, default 20) | `200 Page<AssetVersion>` | List versions of asset |
+| `GET` | `/assets/{asset_id}/versions/{version_id}` | None | `200 AssetVersion` | Exact version details |
+| `POST` | `/assets/{asset_id}/versions/{version_id}/download-intents` | None | `200 DownloadIntent` | Signed GET URL for verified version |
+| `POST` | `/assets/{asset_id}/download-intents` | None | `200 DownloadIntent` | Short-lived signed GET URL for verified current version |
 | `DELETE` | `/assets/{asset_id}` | None | `202 ErasureRequest` | Fails when immutable active manifest still requires asset |
 
 ## Practice Sessions
