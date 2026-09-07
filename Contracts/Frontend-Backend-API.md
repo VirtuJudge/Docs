@@ -65,20 +65,23 @@ Headers: `Idempotency-Key` required. Scoped to actor, project, operation, and ke
 
 Returns `201 UploadIntent`.
 
-Allowed inputs across the full product are:
-- presentation: MP4 or WebM, one per session, at most 500 MB and 10 minutes;
-- supporting document: PDF or PPTX, at most five per session and 25 MB each;
-- answer audio: browser-supported audio normalized by ingestion, recommended maximum 2 minutes.
+Accepted upload combinations are:
 
-In the initial slice, `supporting_document` accepts `.pdf` (`application/pdf`) and `.pptx` (`application/vnd.openxmlformats-officedocument.presentationml.presentation`) up to 25 MiB.
+| Kind | Extensions and declared MIME types | Byte limit | Verified duration limit |
+|---|---|---|---|
+| `supporting_document` | `.pdf`: `application/pdf`; `.pptx`: `application/vnd.openxmlformats-officedocument.presentationml.presentation` | 25 MiB | None |
+| `presentation_video` | `.mp4`: `video/mp4`; `.webm`: `video/webm` | 500 MiB | 600,000 ms |
+| `answer_audio` | `.webm`: `audio/webm`; `.ogg`: `audio/ogg`; `.mp4` or `.m4a`: `audio/mp4`; `.wav`: `audio/wav` | 25 MiB | 120,000 ms |
+
+Clients must send the canonical MIME type without codec parameters. Media verification checks the actual container, supported codecs, required tracks, and full decoded duration; uploads are not transcoded by this endpoint. Presentation video requires a video track, while answer audio must contain audio and no video. Browser WebM without a duration header uses decoded duration. `duration_ms` is measured by the backend and persisted on the Asset and AssetVersion. Raw media receives `retention_expires_at` 30 days after its upload intent was created. This timestamp records the retention boundary; the separate erasure workflow owns physical raw-media purging. Session attachment counts are enforced by the session workflow.
 
 The returned upload URL is a signed S3 SigV4 PUT URL. Its `X-Amz-SignedHeaders` enforces `content-length`, `content-type`, and `if-none-match: *` to prevent object overwrite. Browsers populate `Content-Length` automatically from the upload Blob length.
 
 Important errors (returned as `application/problem+json`):
 - `404 not_found`: unknown project, outsider user, or project erasure requested (concealment)
 - `409 conflict`: idempotency key reused with different request payload
-- `413 payload_too_large`: declared size exceeds 25 MiB limit
-- `415 unsupported_media_type`: unsupported kind, non-PDF/non-PPTX file extension, or unsupported media type
+- `413 payload_too_large`: declared size exceeds the kind-specific byte limit
+- `415 unsupported_media_type`: unsupported kind, extension/MIME combination, or media type
 - `422 validation_failed`: invalid request fields or non-positive size
 
 ### Create version upload intent
