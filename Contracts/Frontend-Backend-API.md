@@ -79,7 +79,7 @@ The returned upload URL is a signed S3 SigV4 PUT URL. Its `X-Amz-SignedHeaders` 
 
 Important errors (returned as `application/problem+json`):
 - `404 not_found`: unknown project, outsider user, or project erasure requested (concealment)
-- `409 conflict`: idempotency key reused with different request payload
+- `409 conflict`: idempotency key reused with different request payload, replay of expired upload intent, or replay for version in terminal or deleting state
 - `413 payload_too_large`: declared size exceeds the kind-specific byte limit
 - `415 unsupported_media_type`: unsupported kind, extension/MIME combination, or media type
 - `422 validation_failed`: invalid request fields or non-positive size
@@ -102,7 +102,7 @@ Returns `201 UploadIntent`. Only supporting documents accept replacement. A repl
 
 Important errors (returned as `application/problem+json`):
 - `404 not_found`: unknown asset, outsider user, or project erasure requested
-- `409 conflict`: idempotency key reused with different request payload, or asset is not a supporting document
+- `409 conflict`: idempotency key reused with different request payload, replay of expired upload intent, replay for version in terminal or deleting state, or asset is not a supporting document
 - `413 payload_too_large`: declared size exceeds 25 MiB limit
 - `415 unsupported_media_type`: unsupported extension or media type
 - `422 validation_failed`: invalid request fields or non-positive size
@@ -124,13 +124,13 @@ The server streams uploaded bytes from storage to bounded temporary disk, verifi
 
 Returns `202 Asset` in `verified` state upon success, representing the exact version completed.
 
-Repeated completions returning the same verified version succeed when checksum and size match. Conflicting completions or attempts to complete an already rejected version return `409 conflict`. Replays after completion do not alter records.
+Repeated completions returning the same verified version succeed when checksum and size match. Conflicting completions or attempts to complete an already rejected or deleting/deleted version return `409 conflict` while the logical asset survives. If cleanup deletes the logical asset because no usable version remains, later access is concealed with `404 not_found`. Replays after completion do not alter records.
 
 When validation fails, the version is committed as `rejected` with a safe `rejection_reason` before returning `422 unprocessable_entity`. If the asset previously had a verified version, that version remains current.
 
 Important errors (returned as `application/problem+json`):
-- `404 not_found`: unknown asset or version, outsider user, or project erasure requested
-- `409 conflict`: mismatch against existing verified version, or version already rejected
+- `404 not_found`: unknown or cleanup-deleted asset or version, outsider user, or project erasure requested
+- `409 conflict`: mismatch against existing verified version, version in deleting or deleted state, or version already rejected
 - `413 payload_too_large`: observed size exceeds limit
 - `422 unprocessable_entity`: invalid values, checksum mismatch, size mismatch, corrupt document, or encrypted document
 - `503 service_unavailable`: transient object storage connectivity failure or verifier unavailable

@@ -122,7 +122,10 @@ Represents a specific immutable uploaded version of a logical asset.
 | `created_by` | `UserId` | Yes | Uploader of this version |
 | `created_at` | timestamp | Yes | UTC creation timestamp |
 | `completed_at` | timestamp | When finished | UTC completion timestamp |
+| `upload_expires_at` | timestamp | Yes | UTC upload completion deadline |
 | `rejection_reason` | string | When rejected | Safe validation failure code (for example `corrupt_pptx` or `size_mismatch`) |
+
+Upload intents persist an absolute `upload_expires_at` deadline clamped to configured TTL (default 900s). Replays sign only the floored remaining seconds before this deadline and never renew beyond it. Replays for expired or non-pending versions return safe 409 conflict. Automated cleanup sweeps abandoned versions past both upload deadline and retention grace period (default 24 hours), preserving a surviving verified version or promoting a fresh pending replacement. The logical asset is deleted only when neither survives.
 
 ### UploadIntent
 
