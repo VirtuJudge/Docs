@@ -25,10 +25,10 @@ The field definitions in [Data Contracts](./Data-Contracts.md) are normative for
 | `PATCH` | `/teams/{team_id}` | `{name}` + `If-Match` | `200 Team` | `403`, `412` |
 | `GET` | `/teams/{team_id}/members` | cursor query | `200 Page<TeamMembership>` | `403` |
 | `DELETE` | `/teams/{team_id}/members/{user_id}` | confirmation | `204` | `403`, `409 last_owner` |
-| `POST` | `/teams/{team_id}/invitations` | `{email, role:"member"}` | `201 TeamInvitation` | `403`, `409 already_member`, `429` |
+| `POST` | `/teams/{team_id}/invitations` | `{email, role:"member"}` + `Idempotency-Key`| `201 TeamInvitation` | `403`, `409 already_member`, `429` |
 | `GET` | `/teams/{team_id}/invitations` | cursor query | `200 Page<TeamInvitation>` | `403` |
-| `POST` | `/teams/{team_id}/invitations/{id}/resend` | empty + `Idempotency-Key` | `202 TeamInvitation` | `403`, `409 invitation_not_pending`, `429` |
-| `DELETE` | `/teams/{team_id}/invitations/{id}` | `If-Match` | `204` | `403`, `409 already_consumed` |
+| `POST` | `/teams/{team_id}/invitations/{id}/resend` | empty| `202 TeamInvitation` | `403`, `409 invitation_not_pending`, `429` |
+| `DELETE` | `/teams/{team_id}/invitations/{id}` | empty | `204` | `403`, `409 already_consumed` |
 | `GET` | `/invitations/{token}` | public token | `200 InvitationPreview` | `404`, `410 invitation_expired` |
 | `POST` | `/invitations/{token}/accept` | authenticated, empty body | `200 TeamMembership` | `409 email_mismatch`, `410` |
 
