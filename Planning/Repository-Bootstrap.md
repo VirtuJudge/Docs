@@ -49,6 +49,12 @@ Each code repo starts with:
 
 ## Local orchestration
 
+The SET-05 Compose configuration lives in the Backend repository and builds application code from sibling Frontend and AI-ML checkouts. It does not clone, pin, or change those peer repositories. Developers select compatible revisions themselves; the SET-02, SET-03, and SET-04 scaffolds must exist before the complete stack can run.
+
+Local bootstrap generates ignored credentials once and reuses them on restart. PostgreSQL enables pgvector and gives the backend and AI worker separate roles and private schemas. Each role can create its own tables but cannot read or write the other role's private tables. Persistent volumes retain database, queue, and object-storage state across an ordinary stop and start.
+
+An explicit local smoke check verifies service connectivity and runs a synthetic analysis through the existing fake AI pipeline. Its queue result is diagnostic data, not canonical AI Job or Practice Session state; the product dispatcher and authenticated callback remain the responsibility of BE-05. Ordinary local mail uses a fake adapter. Live Gmail delivery requires a separate, explicitly invoked smoke test with an allow-listed recipient.
+
 The shared Compose profile starts:
 
 - frontend;

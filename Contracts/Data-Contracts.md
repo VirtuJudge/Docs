@@ -83,6 +83,8 @@ Contains `team_name`, inviter display name, invited email in masked form, `expir
 
 ### Asset
 
+Backend implementation uses RFC 4122 UUID strings for `AssetId`, `AssetVersionId`, `ProjectId`, `UserId`, and `TeamId` across current asset REST endpoints for compatibility with BE-01 identity models.
+
 | Field | Type | Required | Notes |
 |---|---|---:|---|
 | `id` | `AssetId` | Yes | Logical asset |
@@ -98,6 +100,32 @@ Contains `team_name`, inviter display name, invited email in masked form, `expir
 | `created_by` | `UserId` | Yes | Uploader |
 | `created_at` | timestamp | Yes | UTC |
 | `retention_expires_at` | timestamp | Raw media only | Default 30-day boundary |
+| `rejection_reason` | string | When rejected | Safe validation failure code (for example `corrupt_pdf` or `size_mismatch`) |
+
+### AssetVersion
+
+Represents a specific immutable uploaded version of a logical asset.
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| `id` | `AssetVersionId` | Yes | Immutable version identifier |
+| `asset_id` | `AssetId` | Yes | Parent logical asset |
+| `version_number` | integer | Yes | Monotonically increasing sequence number starting at 1 |
+| `state` | enum | Yes | `pending_upload`, `uploaded`, `verified`, `rejected`, `deleting`, `deleted` |
+| `file_name` | string | Yes | Display file name for this specific version |
+| `declared_media_type` | string | Yes | Declared type before upload |
+| `declared_size_bytes` | integer | Yes | Declared size before upload |
+| `media_type` | string | Yes after upload | Verified server-side media type |
+| `size_bytes` | integer | Yes after upload | Verified byte length |
+| `checksum` | checksum | Yes after upload | SHA-256 integrity checksum |
+| `duration_ms` | integer | Video/audio only | Verified duration |
+| `created_by` | `UserId` | Yes | Uploader of this version |
+| `created_at` | timestamp | Yes | UTC creation timestamp |
+| `completed_at` | timestamp | When finished | UTC completion timestamp |
+| `upload_expires_at` | timestamp | Yes | UTC upload completion deadline |
+| `rejection_reason` | string | When rejected | Safe validation failure code (for example `corrupt_pptx` or `size_mismatch`) |
+
+Upload intents persist an absolute `upload_expires_at` deadline clamped to configured TTL (default 900s). Replays sign only the floored remaining seconds before this deadline and never renew beyond it. Replays for expired or non-pending versions return safe 409 conflict. Automated cleanup sweeps abandoned versions past both upload deadline and retention grace period (default 24 hours), preserving a surviving verified version or promoting a fresh pending replacement. The logical asset is deleted only when neither survives.
 
 ### UploadIntent
 
@@ -108,14 +136,15 @@ Contains `team_name`, inviter display name, invited email in masked form, `expir
   "upload_url": "https://short-lived-signed-url.example",
   "method": "PUT",
   "required_headers": {
-    "content-type": "video/mp4"
+    "content-type": "application/pdf",
+    "if-none-match": "*"
   },
   "expires_at": "2026-09-02T12:45:00Z",
-  "maximum_size_bytes": 524288000
+  "maximum_size_bytes": 26214400
 }
 ```
 
-Signed URLs are secrets and must not be stored in frontend logs, notifications, analytics, or telemetry.
+Browsers automatically set the `Content-Length` header from upload Blob length. The signed PUT enforces `Content-Length`, `Content-Type`, and conditional header `If-None-Match: *` via `X-Amz-SignedHeaders` to prevent replacing existing objects. Signed URLs are secrets and must not be stored in frontend logs, notifications, analytics, or telemetry.
 
 ### ObjectReference
 
@@ -131,7 +160,7 @@ An `ObjectReference` never contains a permanent object key or public URL.
 
 ### DownloadIntent
 
-Contains a short-lived signed `download_url`, `expires_at`, verified `media_type`, `size_bytes`, and safe suggested `file_name`. It is returned only after normal resource authorization.
+Contains a short-lived signed `download_url`, `expires_at`, verified `media_type`, `size_bytes`, and safe suggested `file_name`. Issued only for assets in `verified` state after normal resource authorization.
 
 ## Practice Session
 

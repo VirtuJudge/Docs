@@ -266,6 +266,16 @@ Provider bodies and stack traces stay in restricted AI logs.
 
 `GET /internal/v1/ai-jobs/{job_id}` returns the current job status and a `cancel_requested` flag. The worker checks it between expensive stages. It does not expose team or user data beyond what the worker already received in that job.
 
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "job_id": "123e4567-e89b-12d3-a456-426614174000",
+  "status": "pending",
+  "last_update_sequence": 0,
+  "cancel_requested": false
+}
+```
+
 ## Backend validation
 
 The backend does not trust a completed update just because it came from the worker. It verifies:
