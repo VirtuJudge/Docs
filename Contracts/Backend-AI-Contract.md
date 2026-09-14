@@ -215,7 +215,7 @@ Exactly three primary questions are required.
 }
 ```
 
-`follow_up` may be absent when the question limit is reached or there is no grounded reason to ask one.
+`follow_up` may be absent when the question limit is reached or there is no grounded reason to ask one. When present, its text is at most 1,000 characters and `evidence_ids` contains at least one grounding Evidence reference.
 
 ### Completed `generate_report` payload
 
