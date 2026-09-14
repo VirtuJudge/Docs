@@ -39,7 +39,7 @@ Browser notifications are published over the Practice Session stream (`GET /prac
 | `erasure.updated.v1` | Fetch the Erasure Request |
 | `practice_session.resync_required.v1` | Refetch canonical resources for the session and reconcile state |
 
-The stream protocol enforces strictly monotonic sequences, 15-second heartbeat comments, OIDC bearer token authentication, and Last-Event-ID replay. Clients that detect sequence gaps or receive `practice_session.resync_required.v1` must refetch canonical REST resources. Full stream syntax and payload schemas are specified in [Frontend/backend API contract](./Frontend-Backend-API.md#sse-session-stream).
+The stream protocol enforces strictly monotonic sequences for persisted notifications, unpersisted control frames for stream resynchronization, 15-second heartbeat comments, OIDC bearer token authentication, and Last-Event-ID replay. Clients that detect sequence gaps or receive `practice_session.resync_required.v1` must refetch canonical REST resources. Full stream syntax and payload schemas are specified in [Frontend/backend API contract](./Frontend-Backend-API.md#sse-session-stream).
 
 ## Invitation delivery
 

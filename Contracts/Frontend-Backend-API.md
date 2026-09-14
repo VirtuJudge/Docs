@@ -268,7 +268,8 @@ Status is `pending`, `in_progress`, `completed`, or `failed`. User access is rev
   data: <json_payload>
   ```
 - SSE `id` equals the numeric `sequence`.
-- `sequence` is a positive, strictly monotonically increasing integer (`sequence >= 1`) scoped to the Practice Session.
+- Sequence monotonicity applies to persisted notifications: every persisted notification assigned to a Practice Session receives a positive, strictly monotonically increasing integer sequence (`sequence >= 1`).
+- Unpersisted control frame exception: `practice_session.resync_required.v1` is an unpersisted stream control frame. It does not advance the persisted sequence counter; its `sequence` and SSE `id` reflect the current server head sequence at emission time, or `0` for an empty stream where no persisted events have occurred.
 - Every persisted event contains:
   - `sequence` (integer): strictly monotonic per-session event sequence number.
   - `practice_session_id` (string): ULID of the Practice Session.
@@ -278,13 +279,15 @@ Status is `pending`, `in_progress`, `completed`, or `failed`. User access is rev
 ### Last-Event-ID behavior and recovery
 
 - Reconnection cursor: clients supply `Last-Event-ID: <integer>` on reconnect.
-- Rejection of invalid values: malformed or negative values (`< 0`) are rejected immediately with `400 Bad Request` (`application/problem+json`).
-- Replay: when `Last-Event-ID` identifies an event retained in the backend buffer, the server replays all retained events with `sequence > Last-Event-ID` in strictly ascending order before streaming live events.
+- Rejection of invalid values: malformed values (non-numeric, decimal) or negative values (`< 0`) are rejected immediately with `400 Bad Request` (`application/problem+json`).
+- Replay from beginning (`Last-Event-ID: 0`): `0` is an explicit request to replay stream history from the beginning (`sequence >= 1`). If sequence 1 remains retained in the backend buffer, the server replays all retained events starting from sequence 1 in strictly ascending order before streaming live events. If sequence 1 has been trimmed or compacted, the server emits `practice_session.resync_required.v1` with `reason: "cursor_trimmed"`.
+- Replay for retained cursor: when `Last-Event-ID` identifies an event retained in the backend buffer, the server replays all retained events with `sequence > Last-Event-ID` in strictly ascending order before streaming live events.
 - Resync required triggers: the server emits `practice_session.resync_required.v1` when:
   - the client connects with no cursor (missing `Last-Event-ID`) on a session where events already occurred;
   - the supplied cursor has been trimmed or compacted past the retention buffer limit;
   - the cursor has expired beyond the retention window;
-  - the supplied cursor is ahead of the current server sequence (future cursor).
+  - the supplied cursor is ahead of the current server sequence (future cursor);
+  - any unexplained non-negative cursor is absent from history.
 - Gap recovery: if a client detects a sequence gap (`sequence != expected_sequence + 1`), or receives `practice_session.resync_required.v1`, the client must treat local stream state as desynchronized and refetch canonical resources via REST before processing further events.
 
 ### Strict privacy and content exclusions
@@ -345,7 +348,7 @@ Emitted when an Analysis Attempt stage changes status or reports progress.
 | `practice_session_id` | ID | Yes | ULID |
 | `analysis_attempt_id` | ID | Yes | ULID of running Analysis Attempt |
 | `analysis_attempt_number` | integer | Yes | Attempt number starting at 1 |
-| `stage` | enum | Yes | Public Stage: `ingestion`, `speech`, `diarization`, `vision`, `audio_features`, `documents`, `aggregation`, `grounding`, `questions`, `answers`, `report` |
+| `stage` | enum | Yes | Public Stage: `ingestion`, `speech`, `diarization`, `vision`, `audio_features`, `documents`, `aggregation`, `grounding`, `questions`, `answers`, `report`, `processing` (safe fallback for internal or unknown worker stages) |
 | `status` | enum | Yes | Stage status: `pending`, `running`, `completed`, `failed`, `skipped`, `cancelled` |
 | `progress` | number | Yes | Normalized progress from `0.0` to `1.0` |
 | `occurred_at` | timestamp | Yes | UTC |
@@ -425,13 +428,14 @@ data: {"sequence":188,"practice_session_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H3","report
 
 #### `erasure.updated.v1`
 
-Emitted when an active Erasure Request targeting the Practice Session changes status. Deleted content is omitted; clients fetch the Erasure Request (`GET /erasure-requests/{request_id}`).
+Emitted when an active Erasure Request targeting the Practice Session or an ancestor resource (project or team) changes status. When an ancestor erasure is in progress, the session stream publishes `erasure.updated.v1` with the respective `scope` and `status` so clients observe revocation and erasure progression. Deleted content is omitted; clients fetch the Erasure Request (`GET /erasure-requests/{request_id}`).
 
 | Field | Type | Required | Notes |
 |---|---|---:|---|
 | `sequence` | integer | Yes | Monotonic sequence number |
 | `practice_session_id` | ID | Yes | ULID |
 | `erasure_request_id` | ID | Yes | ULID of Erasure Request |
+| `scope` | enum | Yes | `practice_session`, `project`, `team`, `asset` |
 | `status` | enum | Yes | `pending`, `in_progress`, `completed`, `failed` |
 | `occurred_at` | timestamp | Yes | UTC |
 | `trace_id` | string | Yes | Correlation ID |
@@ -439,19 +443,19 @@ Emitted when an active Erasure Request targeting the Practice Session changes st
 ```text
 id: 189
 event: erasure.updated.v1
-data: {"sequence":189,"practice_session_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H3","erasure_request_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HF","status":"in_progress","occurred_at":"2026-09-02T12:37:00Z","trace_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HG"}
+data: {"sequence":189,"practice_session_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H3","erasure_request_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HF","scope":"practice_session","status":"in_progress","occurred_at":"2026-09-02T12:37:00Z","trace_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HG"}
 ```
 
 #### `practice_session.resync_required.v1`
 
-Emitted when the client cursor cannot be replayed from retained events or when stream desynchronization requires a full client state refetch. Clients must refetch the canonical Practice Session and related active resources.
+Emitted when the client cursor cannot be replayed from retained events, when an unexplained cursor is absent from history, or when stream desynchronization requires a full client state refetch. This event is an unpersisted control frame exempt from sequence increment; its `sequence` and SSE `id` reflect the current server head sequence (`current_sequence`), or `0` for an empty stream. Clients must refetch the canonical Practice Session and related active resources.
 
 | Field | Type | Required | Notes |
 |---|---|---:|---|
-| `sequence` | integer | Yes | Current head sequence on the server |
+| `sequence` | integer | Yes | Current head sequence on the server, or 0 for an empty stream |
 | `practice_session_id` | ID | Yes | ULID |
 | `reason` | enum | Yes | `cursor_missing`, `cursor_trimmed`, `cursor_expired`, `cursor_future` |
-| `current_sequence` | integer | Yes | Current head sequence on the server |
+| `current_sequence` | integer | Yes | Current head sequence on the server, or 0 for an empty stream |
 | `requested_sequence` | integer | No | Sequence requested in `Last-Event-ID`, or `null` if absent |
 | `occurred_at` | timestamp | Yes | UTC |
 | `trace_id` | string | Yes | Correlation ID |

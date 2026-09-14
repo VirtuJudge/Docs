@@ -239,7 +239,7 @@ List endpoints return `{items, next_cursor?}`. The cursor is opaque, the default
 
 | Field | Type | Required | Notes |
 |---|---|---:|---|
-| `stage` | enum | Yes | `ingestion`, `speech`, `diarization`, `vision`, `audio_features`, `documents`, `aggregation`, `grounding`, `questions`, `answers`, `report` |
+| `stage` | enum | Yes | `ingestion`, `speech`, `diarization`, `vision`, `audio_features`, `documents`, `aggregation`, `grounding`, `questions`, `answers`, `report`, `processing` |
 | `status` | enum | Yes | `pending`, `running`, `completed`, `failed`, `skipped`, `cancelled` |
 | `progress` | number | Yes | `0.0`–`1.0`; stage estimate, not total truth |
 | `started_at`, `completed_at` | timestamp | No | UTC |
