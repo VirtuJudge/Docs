@@ -280,19 +280,61 @@ Status is `pending`, `in_progress`, `completed`, or `failed`. User access is rev
 
 `GET /practice-sessions/{session_id}/events`
 
+### Transport and authentication
+
 - Media type: `text/event-stream`
-- Authentication required.
-- Supports `Last-Event-ID`.
-- Sends a heartbeat comment every 15 seconds.
-- Event retention is best effort; clients refetch the session after reconnect or a sequence gap.
+- Response headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`
+- Authentication: Bearer authentication required via `Authorization: Bearer <token>` header.
+- No tokens in query parameters: passing access tokens in URL query parameters is rejected with `401 Unauthorized` (`invalid_token`) to prevent token exposure in logs, proxies, and browser history.
+- Authorization: verified through Team Membership ancestry for the Practice Session. Unauthorized callers receive `403 Forbidden` (or `404 Not Found` when concealing resource existence).
+- Heartbeat: server emits comment line `: heartbeat` every 15 seconds to prevent proxy and client timeouts.
 
-Example:
+### Framing and sequence rules
 
-```text
-id: 184
-event: practice_session.updated.v1
-data: {"sequence":184,"practice_session_id":"01J...","resource_version":12,"state":"questions_ready","occurred_at":"2026-09-02T12:30:00Z","trace_id":"01J..."}
-```
+- Every frame uses standard SSE format:
+  ```text
+  id: <sequence>
+  event: <event_name>
+  data: <json_payload>
+  ```
+- SSE `id` equals the numeric `sequence`.
+- Sequence monotonicity applies to persisted notifications: every persisted notification assigned to a Practice Session receives a positive, strictly monotonically increasing integer sequence (`sequence >= 1`).
+- Unpersisted control frame exception: `practice_session.resync_required.v1` is an unpersisted stream control frame. It does not advance the persisted sequence counter; its `sequence` and SSE `id` reflect the current server head sequence at emission time, or `0` for an empty stream where no persisted events have occurred.
+- Every persisted event contains:
+  - `sequence` (integer): strictly monotonic per-session event sequence number.
+  - `practice_session_id` (string): ULID of the Practice Session.
+  - `occurred_at` (string): RFC 3339 UTC timestamp.
+  - `trace_id` (string): correlation identifier.
+
+### Last-Event-ID behavior and recovery
+
+- Reconnection cursor: clients supply `Last-Event-ID: <integer>` on reconnect.
+- Rejection of invalid values: malformed values (non-numeric, decimal) or negative values (`< 0`) are rejected immediately with `400 Bad Request` (`application/problem+json`).
+- Replay from beginning (`Last-Event-ID: 0`): `0` is an explicit request to replay stream history from the beginning (`sequence >= 1`). If sequence 1 remains retained in the backend buffer, the server replays all retained events starting from sequence 1 in strictly ascending order before streaming live events. If sequence 1 has been trimmed or compacted, the server emits `practice_session.resync_required.v1` with `reason: "cursor_trimmed"`.
+- Replay for retained cursor: when `Last-Event-ID` identifies an event retained in the backend buffer, the server replays all retained events with `sequence > Last-Event-ID` in strictly ascending order before streaming live events.
+- Resync required triggers: the server emits `practice_session.resync_required.v1` when:
+  - the client connects with no cursor (missing `Last-Event-ID`) on a session where events already occurred;
+  - the supplied cursor has been trimmed or compacted past the retention buffer limit;
+  - the cursor has expired beyond the retention window;
+  - the supplied cursor is ahead of the current server sequence (future cursor);
+  - any unexplained non-negative cursor is absent from history.
+- Gap recovery: if a client detects a sequence gap (`sequence != expected_sequence + 1`), or receives `practice_session.resync_required.v1`, the client must treat local stream state as desynchronized and refetch canonical resources via REST before processing further events.
+
+### Strict privacy and content exclusions
+
+SSE payloads contain identifiers, entity versions, public Stage names, numeric progress, and safe statuses only.
+
+Strictly excluded from all SSE payloads:
+- transcripts and transcript segments;
+- prompts and instructions;
+- Evidence content and excerpts;
+- storage object keys;
+- signed download or upload URLs;
+- worker messages;
+- provider request and response bodies;
+- raw provider errors and stack traces.
+
+### Reconciled event catalogue
 
 Frontend-visible SSE event types:
 
@@ -302,8 +344,157 @@ Frontend-visible SSE event types:
 - `qa.answer_updated.v1`
 - `report.ready.v1`
 - `erasure.updated.v1`
+- `practice_session.resync_required.v1`
 
-SSE payloads contain identifiers and safe status only. The frontend fetches the corresponding resource for canonical data.
+### Event specifications and examples
+
+#### `practice_session.updated.v1`
+
+Emitted when Practice Session state changes or session resource version advances.
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| `sequence` | integer | Yes | Monotonic sequence number |
+| `practice_session_id` | ID | Yes | ULID |
+| `version` | integer | Yes | Session resource version (`EntityVersion`) |
+| `state` | enum | Yes | `draft`, `ready`, `analyzing`, `questions_ready`, `qa_in_progress`, `report_generating`, `completed`, `failed`, `cancelled` |
+| `current_attempt` | integer | No | Present when an Analysis Attempt is active |
+| `occurred_at` | timestamp | Yes | UTC |
+| `trace_id` | string | Yes | Correlation ID |
+
+```text
+id: 184
+event: practice_session.updated.v1
+data: {"sequence":184,"practice_session_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H3","version":12,"state":"questions_ready","current_attempt":1,"occurred_at":"2026-09-02T12:30:00Z","trace_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H4"}
+```
+
+#### `practice_session.analysis_progressed.v1`
+
+Emitted when an Analysis Attempt stage changes status or reports progress.
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| `sequence` | integer | Yes | Monotonic sequence number |
+| `practice_session_id` | ID | Yes | ULID |
+| `analysis_attempt_id` | ID | Yes | ULID of running Analysis Attempt |
+| `analysis_attempt_number` | integer | Yes | Attempt number starting at 1 |
+| `stage` | enum | Yes | Public Stage: `ingestion`, `speech`, `diarization`, `vision`, `audio_features`, `documents`, `aggregation`, `grounding`, `questions`, `answers`, `report`, `processing` (safe fallback for internal or unknown worker stages) |
+| `status` | enum | Yes | Stage status: `pending`, `running`, `completed`, `failed`, `skipped`, `cancelled` |
+| `progress` | number | Yes | Normalized progress from `0.0` to `1.0` |
+| `occurred_at` | timestamp | Yes | UTC |
+| `trace_id` | string | Yes | Correlation ID |
+
+```text
+id: 185
+event: practice_session.analysis_progressed.v1
+data: {"sequence":185,"practice_session_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H3","analysis_attempt_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H5","analysis_attempt_number":1,"stage":"speech","status":"running","progress":0.45,"occurred_at":"2026-09-02T12:30:20Z","trace_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H6"}
+```
+
+#### `qa.question_available.v1`
+
+Emitted when a Primary Question or Follow-up Question becomes active for the session. Question text and Evidence content are omitted; clients refetch the Q&A Round (`GET /practice-sessions/{session_id}/qa`).
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| `sequence` | integer | Yes | Monotonic sequence number |
+| `practice_session_id` | ID | Yes | ULID |
+| `qa_round_id` | ID | Yes | ULID of Q&A Round |
+| `question_id` | ID | Yes | ULID of active Question |
+| `position` | integer | Yes | Question position (1 to 5) |
+| `kind` | enum | Yes | `primary` or `follow_up` |
+| `state` | enum | Yes | `active` |
+| `version` | integer | Yes | Q&A Round resource version |
+| `occurred_at` | timestamp | Yes | UTC |
+| `trace_id` | string | Yes | Correlation ID |
+
+```text
+id: 186
+event: qa.question_available.v1
+data: {"sequence":186,"practice_session_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H3","qa_round_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H7","question_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H8","position":1,"kind":"primary","state":"active","version":3,"occurred_at":"2026-09-02T12:32:00Z","trace_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H9"}
+```
+
+#### `qa.answer_updated.v1`
+
+Emitted when an Answer is submitted or skipped. Audio references and transcripts are omitted; clients refetch the Q&A Round (`GET /practice-sessions/{session_id}/qa`).
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| `sequence` | integer | Yes | Monotonic sequence number |
+| `practice_session_id` | ID | Yes | ULID |
+| `qa_round_id` | ID | Yes | ULID of Q&A Round |
+| `question_id` | ID | Yes | ULID of answered or skipped Question |
+| `answer_id` | ID | Yes | ULID of Answer |
+| `status` | enum | Yes | `submitted` or `skipped` |
+| `version` | integer | Yes | Q&A Round resource version |
+| `occurred_at` | timestamp | Yes | UTC |
+| `trace_id` | string | Yes | Correlation ID |
+
+```text
+id: 187
+event: qa.answer_updated.v1
+data: {"sequence":187,"practice_session_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H3","qa_round_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H7","question_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H8","answer_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HA","status":"submitted","version":4,"occurred_at":"2026-09-02T12:34:00Z","trace_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HB"}
+```
+
+#### `report.ready.v1`
+
+Emitted when Report generation finishes and the Report resource is ready. Scores, feedback, recommendations, and limitations are omitted; clients fetch the Report (`GET /practice-sessions/{session_id}/report`).
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| `sequence` | integer | Yes | Monotonic sequence number |
+| `practice_session_id` | ID | Yes | ULID |
+| `report_id` | ID | Yes | ULID of Report |
+| `evaluation_id` | ID | Yes | ULID of Evaluation |
+| `status` | enum | Yes | `ready` |
+| `version` | integer | Yes | Session resource version |
+| `occurred_at` | timestamp | Yes | UTC |
+| `trace_id` | string | Yes | Correlation ID |
+
+```text
+id: 188
+event: report.ready.v1
+data: {"sequence":188,"practice_session_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H3","report_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HC","evaluation_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HD","status":"ready","version":15,"occurred_at":"2026-09-02T12:36:00Z","trace_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HE"}
+```
+
+#### `erasure.updated.v1`
+
+Emitted when an active Erasure Request targeting the Practice Session or an ancestor resource (project or team) changes status. When an ancestor erasure is in progress, the session stream publishes `erasure.updated.v1` with the respective `scope` and `status` so clients observe revocation and erasure progression. Deleted content is omitted; clients fetch the Erasure Request (`GET /erasure-requests/{request_id}`).
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| `sequence` | integer | Yes | Monotonic sequence number |
+| `practice_session_id` | ID | Yes | ULID |
+| `erasure_request_id` | ID | Yes | ULID of Erasure Request |
+| `scope` | enum | Yes | `practice_session`, `project`, `team`, `asset` |
+| `status` | enum | Yes | `pending`, `in_progress`, `completed`, `failed` |
+| `occurred_at` | timestamp | Yes | UTC |
+| `trace_id` | string | Yes | Correlation ID |
+
+```text
+id: 189
+event: erasure.updated.v1
+data: {"sequence":189,"practice_session_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H3","erasure_request_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HF","scope":"practice_session","status":"in_progress","occurred_at":"2026-09-02T12:37:00Z","trace_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HG"}
+```
+
+#### `practice_session.resync_required.v1`
+
+Emitted when the client cursor cannot be replayed from retained events, when an unexplained cursor is absent from history, or when stream desynchronization requires a full client state refetch. This event is an unpersisted control frame exempt from sequence increment; its `sequence` and SSE `id` reflect the current server head sequence (`current_sequence`), or `0` for an empty stream. Clients must refetch the canonical Practice Session and related active resources.
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| `sequence` | integer | Yes | Current head sequence on the server, or 0 for an empty stream |
+| `practice_session_id` | ID | Yes | ULID |
+| `reason` | enum | Yes | `cursor_missing`, `cursor_trimmed`, `cursor_expired`, `cursor_future` |
+| `current_sequence` | integer | Yes | Current head sequence on the server, or 0 for an empty stream |
+| `requested_sequence` | integer | No | Sequence requested in `Last-Event-ID`, or `null` if absent |
+| `occurred_at` | timestamp | Yes | UTC |
+| `trace_id` | string | Yes | Correlation ID |
+
+```text
+id: 189
+event: practice_session.resync_required.v1
+data: {"sequence":189,"practice_session_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H3","reason":"cursor_trimmed","current_sequence":189,"requested_sequence":120,"occurred_at":"2026-09-02T12:38:00Z","trace_id":"01J2X3Y4Z5A6B7C8D9E0F1G2HH"}
+```
 
 ## Pagination
 

@@ -1,6 +1,6 @@
 # Job and notification catalogue
 
-The MVP does not use a general event bus. It has four AI job messages, five job-update statuses, five browser notifications, and invitation-delivery status.
+The MVP does not use a general event bus. It has four AI job messages, five job-update statuses, seven browser notifications, and invitation-delivery status.
 
 ## AI jobs
 
@@ -27,15 +27,19 @@ Updates are idempotent by `job_id` and increasing `sequence`. The backend ignore
 
 ## Browser SSE notifications
 
-Browser notifications contain IDs, version, state, and safe progress only. The frontend refetches the resource for full data.
+Browser notifications are published over the Practice Session stream (`GET /practice-sessions/{session_id}/events`). Notifications contain identifiers, resource versions, states, public Stage indicators, and progress values only. They never contain transcripts, prompts, Evidence content, object keys, signed URLs, worker messages, provider bodies, or raw provider errors. The frontend refetches canonical resources for full data.
 
 | Notification | Client action |
 |---|---|
 | `practice_session.updated.v1` | Refetch the Practice Session |
 | `practice_session.analysis_progressed.v1` | Update progress or refetch after a sequence gap |
 | `qa.question_available.v1` | Refetch the Q&A Round |
+| `qa.answer_updated.v1` | Refetch the Q&A Round |
 | `report.ready.v1` | Fetch the Report |
 | `erasure.updated.v1` | Fetch the Erasure Request |
+| `practice_session.resync_required.v1` | Refetch canonical resources for the session and reconcile state |
+
+The stream protocol enforces strictly monotonic sequences for persisted notifications, unpersisted control frames for stream resynchronization, 15-second heartbeat comments, OIDC bearer token authentication, and Last-Event-ID replay. Clients that detect sequence gaps or receive `practice_session.resync_required.v1` must refetch canonical REST resources. Full stream syntax and payload schemas are specified in [Frontend/backend API contract](./Frontend-Backend-API.md#sse-session-stream).
 
 ## Invitation delivery
 
