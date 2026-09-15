@@ -108,6 +108,13 @@ The worker validates the schema before starting. Repeated delivery with the same
 
 The report result must include team feedback and one feedback section for every supplied mapping.
 
+Before the Backend persists or dispatches a `generate_report` job, it serializes the completed
+Q&A Round into `projects/{project_id}/sessions/{session_id}/attempts/{attempt_number}/qa.json`.
+The JSON includes its Q&A Round metadata, ordered Questions, finalized Answers, and available
+assessment artifact references. Its `ArtifactRef` uses schema version 1 and the SHA-256 of the
+exact uploaded bytes. If the upload fails, the Backend leaves the Q&A Round available for retry
+and does not create or dispatch the report job.
+
 ### `erase_ai_data`
 
 ```json
