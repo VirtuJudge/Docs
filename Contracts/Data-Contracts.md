@@ -469,6 +469,7 @@ Draft recordings may be replaced. Submission is immutable; correcting it require
   "score_components": [],
   "team_feedback": {},
   "member_feedback": [],
+  "markdown": "# Demo Day practice: 2 September 2026\\n\\n...",
   "transcript_timeline": [],
   "document_alignment": [],
   "qa_review": [],
@@ -479,7 +480,7 @@ Draft recordings may be replaced. Submission is immutable; correcting it require
 }
 ```
 
-The backend validates this payload, creates the canonical Report, and separately renders a PDF. The AI artifact alone is not a user-visible report.
+The backend verifies the AI report Markdown artifact checksum, retains its UTF-8 Markdown in the canonical Report, and exposes it to authorized clients alongside the structured fields. The frontend renders this Markdown as report content and the backend separately renders a PDF. The AI artifact alone is not a user-visible report.
 
 ### ReportExport
 

@@ -254,7 +254,7 @@ Only one question is active at a time. A draft recording may be replaced before 
 | `POST` | `/report-exports/{export_id}/download-intents` | `200 DownloadIntent` | `409 export_not_ready` |
 | `DELETE` | `/practice-sessions/{session_id}` | `202 ErasureRequest` | `403`, `409 deletion_in_progress` |
 
-`ReportPayload` always includes `team_feedback` and a `member_feedback` entry for every mapped member. A member with no reliable source evidence receives an explicit limitation rather than invented feedback.
+`ReportPayload` always includes the checksum-verified Markdown report, `team_feedback`, and a `member_feedback` entry for every mapped member. A member with no reliable source evidence receives an explicit limitation rather than invented feedback.
 
 The final Evaluation is created with the Report after Q&A. Before that point, the Practice Session exposes analysis findings and limitations without claiming a Q&A-inclusive overall score.
 
