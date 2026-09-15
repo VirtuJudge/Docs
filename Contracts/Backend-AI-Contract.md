@@ -74,6 +74,9 @@ The worker validates the schema before starting. Repeated delivery with the same
   "question_id": "01J...",
   "answer_id": "01J...",
   "answered_by": "01J...",
+  "question_text": "What evidence supports the claimed conversion rate?",
+  "rubric_dimension": "pitch_content_and_evidence",
+  "question_evidence_ids": ["ev_01J..."],
   "audio": {
     "artifact_id": "01J...",
     "object_key": "answers/team/session/audio",
@@ -84,6 +87,16 @@ The worker validates the schema before starting. Repeated delivery with the same
   "remaining_follow_ups": 2
 }
 ```
+
+`question_evidence_ids` carries the backend-validated Evidence grounding the active
+Question. A generated Follow-up Question must reuse those identifiers. If they are
+absent on a legacy queued message, the worker omits the follow-up rather than inventing
+grounding.
+
+The backend periodically returns queued or running jobs with no update for 15 minutes
+to pending state, resets their callback sequence, and redispatches the same stable job
+envelope. This recovers worker loss and terminal callback conflicts without creating a
+new Analysis Attempt.
 
 ### `generate_report`
 
