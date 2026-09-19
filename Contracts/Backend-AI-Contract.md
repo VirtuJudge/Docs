@@ -100,13 +100,15 @@ The worker validates the schema before starting. Repeated delivery with the same
     "object_key": "ai/session/qa.json",
     "checksum": "sha256:..."
   },
+  "rubric": {"rubric_id": "startup_pitch", "version": 1},
   "speaker_mappings": [
     {"speaker_label": "SPEAKER_00", "user_id": "01J...", "display_name": "Member name"}
   ]
 }
 ```
 
-The report result must include team feedback and one feedback section for every supplied mapping.
+The worker must generate the Evaluation with the supplied rubric id and version. The report result must include team feedback and one feedback section for every supplied mapping.
+The worker defaults to `startup_pitch` version `1` only for already-queued legacy jobs that do not contain the additive `rubric` field.
 
 ### `erase_ai_data`
 
@@ -229,7 +231,7 @@ Exactly three primary questions are required.
   },
   "report_artifact": {
     "artifact_id": "01J...",
-    "object_key": "ai/session/report.json",
+    "object_key": "ai/session/report.md",
     "checksum": "sha256:...",
     "schema_version": 1
   },

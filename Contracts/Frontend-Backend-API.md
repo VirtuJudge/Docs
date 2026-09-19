@@ -72,7 +72,7 @@ The backend constructs the URL using the configured frontend_url; the invitation
 | `POST` | `/teams/{team_id}/projects` | `{name, description?}` | `201 Project` | `422` |
 | `GET` | `/projects/{project_id}` | None | `200 Project` | `403`, `404` |
 | `PATCH` | `/projects/{project_id}` | `{name?, description?}` + `If-Match` | `200 Project` | `403`, `412` |
-| `DELETE` | `/projects/{project_id}` | `{confirmation}` + `Idempotency-Key` | `202 ErasureRequest` | `403`, `409` |
+| `DELETE` | `/projects/{project_id}` | optional `{confirmation}` | `204` | `403`, `404`, `409` |
 
 ## Assets and direct uploads
 
@@ -176,7 +176,7 @@ Important errors (returned as `application/problem+json`):
 | `GET` | `/assets/{asset_id}/versions/{version_id}` | None | `200 AssetVersion` | Exact version details |
 | `POST` | `/assets/{asset_id}/versions/{version_id}/download-intents` | None | `200 DownloadIntent` | Signed GET URL for verified version |
 | `POST` | `/assets/{asset_id}/download-intents` | None | `200 DownloadIntent` | Short-lived signed GET URL for verified current version |
-| `DELETE` | `/assets/{asset_id}` | None | `202 ErasureRequest` | Fails when immutable active manifest still requires asset |
+| `DELETE` | `/assets/{asset_id}` | None | `204` | `403`, `404` |
 
 ## Practice Sessions
 
@@ -252,9 +252,9 @@ Only one question is active at a time. A draft recording may be replaced before 
 | `POST` | `/practice-sessions/{session_id}/report/pdf` | `202 ReportExport` | `409 report_not_ready` |
 | `GET` | `/report-exports/{export_id}` | `200 ReportExport` | `403`, `404` |
 | `POST` | `/report-exports/{export_id}/download-intents` | `200 DownloadIntent` | `409 export_not_ready` |
-| `DELETE` | `/practice-sessions/{session_id}` | `202 ErasureRequest` | `403`, `409 deletion_in_progress` |
+| `DELETE` | `/practice-sessions/{session_id}` | None | `204` | `403`, `404` |
 
-`ReportPayload` always includes `team_feedback` and a `member_feedback` entry for every mapped member. A member with no reliable source evidence receives an explicit limitation rather than invented feedback.
+`ReportPayload` always includes the checksum-verified Markdown report, `team_feedback`, and a `member_feedback` entry for every mapped member. A member with no reliable source evidence receives an explicit limitation rather than invented feedback.
 
 The final Evaluation is created with the Report after Q&A. Before that point, the Practice Session exposes analysis findings and limitations without claiming a Q&A-inclusive overall score.
 
