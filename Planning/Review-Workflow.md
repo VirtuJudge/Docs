@@ -87,6 +87,8 @@ Small internal refactors that don't change behaviour or a boundary do not need a
 
 ## Push and PR gate
 
+Run `python -m unittest discover -s scripts/tests` and `python scripts/validate_docs.py` locally. Documentation CI runs both commands on pull requests and pushes to `main`. It validates tracked Markdown's local file links, JSON examples, balanced code fences, and unresolved conflict markers without external dependencies. External URLs, heading anchors, Mermaid semantics, and contract schema agreement still require the relevant manual or producer/consumer review.
+
 Only after local approval:
 
 1. Confirm `git status` contains only intentional files.
