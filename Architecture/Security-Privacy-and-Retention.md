@@ -48,6 +48,33 @@ The backend records consent policy version, actor, timestamp, and session. Revok
 
 An owner may request session or project deletion. The API returns an Erasure Request ID. Resources become inaccessible immediately, and the purge worker removes backend records, AI-derived data, vectors, objects, PDFs, cache entries, and queued work within 24 hours. Failures are retried and visible to operators.
 
+The coordinator commits revocation, an exact deletion inventory, per-store steps, and an `erase_ai_data` job together. It cancels affected jobs before purging their data, deletes external stores before product rows, and retains a safe audit tombstone. Leases and bounded backoff recover interrupted work; failed steps remain retryable and overdue requests emit an operator alert. Shared presentation/document versions remain available to surviving sessions; session-owned answer audio and PDFs are purged with the session. Project deletion removes all versions.
+
+The scheduled raw-media sweep uses the recorded 30-day upload-intent deadline. It revokes the raw asset, removes its objects and source-linked derived measurements, and retains the Practice Session, transcripts, Evaluation, and Report. It never invokes the explicit asset cascade that deletes a dependent Practice Session.
+
+Object inventory includes scoped backend-generated Q&A JSON and orphan objects under the target's ownership prefixes. The coordinator waits for existing upload grants to expire before its final inventory and purge, so a previously issued upload URL cannot recreate purged media. Legacy project requests are adopted by the coordinator with their original actor, request time, and deadline.
+
+### Operating retention and erasure
+
+Deploy the Backend migration and matching AI-ML worker contract together before enabling traffic. Keep `ERASURE_ENABLED=true`, with the default ten-second polling interval, batch size 50, and five-minute renewable lease. Every API process may run the coordinator: PostgreSQL row locks and lease tokens protect claims. Never disable the loop in production without a replacement coordinator. Keep object storage unversioned, or configure equivalent physical noncurrent-version erasure; deleting a current key in a versioned bucket alone is not physical erasure.
+
+For rollback, stop deletion traffic and preserve the new durable tables and jobs until every accepted request is drained. Prefer a forward fix. The schema downgrade removes erasure jobs and audit tables, so it must not run over outstanding production requests. Existing signed download URLs can remain usable until their short TTL or object deletion; the application cannot revoke grants that have already left its control.
+
+An accepted request is not a promise that unavailable dependencies will recover within 24 hours. The durable deadline, failed store, safe failure code, and retry count must be monitored. Route the `Erasure deadline exceeded` error to the operator alert channel. A dependency failure leaves resources revoked and retries the incomplete store with bounded exponential backoff. Restore the failed dependency rather than clearing steps or recreating deleted resources. To expedite an operator retry, set only that request's `next_attempt_at` to the current UTC time, leaving lease tokens, step statuses, counts, and inventories unchanged.
+
+Use the authenticated `GET /api/v1/erasure-requests/{id}` for Team-visible progress. For operations, this read-only query lists actionable failures and overdue work without content or storage keys:
+
+```sql
+SELECT r.id, r.scope, r.scope_id, r.status, r.deadline_at,
+       s.store, s.attempts, s.failure_code
+FROM erasure_requests r
+JOIN erasure_steps s ON s.request_id = r.id
+WHERE r.status <> 'completed'
+  AND (s.status = 'failed' OR r.deadline_at <= CURRENT_TIMESTAMP);
+```
+
+Redis cancellation removes only exact target task IDs from queue lists and unacknowledged deliveries. It waits for worker-reported active, reserved, and scheduled work to settle before deleting data. The AI worker checks revocation before starting and between stages, and fails closed if the backend cannot be reached. Completed requests retain only safe IDs, timestamps, statuses, and counts; temporary object inventories and dispatch payloads are removed.
+
 ## Threat-focused controls
 
 | Threat | Control |

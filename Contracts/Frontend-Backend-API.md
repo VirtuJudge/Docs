@@ -72,7 +72,7 @@ The backend constructs the URL using the configured frontend_url; the invitation
 | `POST` | `/teams/{team_id}/projects` | `{name, description?}` | `201 Project` | `422` |
 | `GET` | `/projects/{project_id}` | None | `200 Project` | `403`, `404` |
 | `PATCH` | `/projects/{project_id}` | `{name?, description?}` + `If-Match` | `200 Project` | `403`, `412` |
-| `DELETE` | `/projects/{project_id}` | `{confirmation}` + `Idempotency-Key` | `202 ErasureRequest` | `403`, `409` |
+| `DELETE` | `/projects/{project_id}` | `{confirmation}` + `Idempotency-Key` | `202 ErasureRequest` | `403`, `404`, `409` |
 
 ## Assets and direct uploads
 
@@ -252,7 +252,7 @@ Only one question is active at a time. A draft recording may be replaced before 
 | `POST` | `/practice-sessions/{session_id}/report/pdf` | `202 ReportExport` | `409 report_not_ready` |
 | `GET` | `/report-exports/{export_id}` | `200 ReportExport` | `403`, `404` |
 | `POST` | `/report-exports/{export_id}/download-intents` | `200 DownloadIntent` | `409 export_not_ready` |
-| `DELETE` | `/practice-sessions/{session_id}` | `202 ErasureRequest` | `403`, `409 deletion_in_progress` |
+| `DELETE` | `/practice-sessions/{session_id}` | `Idempotency-Key` | `202 ErasureRequest` | `403`, `404` |
 
 `ReportPayload` always includes `team_feedback` and a `member_feedback` entry for every mapped member. A member with no reliable source evidence receives an explicit limitation rather than invented feedback.
 
@@ -275,6 +275,10 @@ The final Evaluation is created with the Report after Q&A. Before that point, th
 ```
 
 Status is `pending`, `in_progress`, `completed`, or `failed`. User access is revoked when the request is accepted, not when the physical purge finishes.
+
+Deletion requires Team Owner permission. Responses include `Location: /api/v1/erasure-requests/{id}`. Repeated requests for the same target return its existing Erasure Request, including after the target has been purged. A reused idempotency key with a different confirmation returns `409`. Outsiders receive `404`. Status remains accessible to current members of the recorded Team after target deletion and includes per-store status, attempts, safe failure codes, and deletion counts.
+
+An existing session stream receives the acceptance notification and closes. Reconnecting after revocation returns `404`; subsequent progress is available from the Erasure Request. Direct object URLs already issued remain valid until their short TTL expires or their object is deleted; API access and issuance of new URLs are revoked immediately.
 
 ## SSE session stream
 
