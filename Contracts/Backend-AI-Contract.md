@@ -110,6 +110,12 @@ The report result must include team feedback and one feedback section for every 
 
 ### `erase_ai_data`
 
+Erasure jobs have no Analysis Attempt. Their queue envelope may omit `practice_session_id` and `analysis_attempt`; those fields remain required for analysis and report jobs. No sentinel resource IDs are used.
+
+The payload also carries server-derived `practice_session_ids`, `answer_ids`, `asset_version_ids`, and `retention_only` (default false). Project erasure enumerates every affected session and answer, including an empty list for a Project with no sessions. Explicit session/project deletion removes all AI-owned artifacts, reports, evaluation files, vectors, checkpoints, and scratch media. Retention erasure removes source-linked raw-media derivatives while preserving report/evaluation and answer transcript artifacts. The worker must never delete backend upload objects.
+
+An erasure completion is validated against its durable Erasure Request and trace ID, independently of deleted product ancestry. Duplicate sequence updates have no repeated side effects.
+
 ```json
 {
   "erasure_request_id": "01J...",

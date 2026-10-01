@@ -520,16 +520,18 @@ The backend validates this payload, creates the canonical Report, and separately
 
 | Field | Type | Required | Notes |
 |---|---|---:|---|
-| `id` | `ErasureRequestId` | Yes | ULID |
-| `scope` | enum | Yes | `asset`, `practice_session`, `project`, or `team` |
+| `id` | `ErasureRequestId` | Yes | UUID in current persistence |
+| `scope` | enum | Yes | `asset` (scheduled retention), `practice_session`, or `project` |
 | `scope_id` | Resource ID | Yes | Target |
 | `status` | enum | Yes | `pending`, `in_progress`, `completed`, `failed` |
-| `requested_by` | `UserId` | Yes | Owner initiating deletion |
+| `requested_by` | `UserId` or null | Yes | Owner initiating deletion, null for scheduled retention |
 | `requested_at`, `deadline_at` | timestamp | Yes | Physical deletion deadline is within 24 hours |
 | `completed_at` | timestamp | No | UTC |
 | `steps` | `ErasureStep[]` | Yes | Product tables, AI tables, objects, Redis/cache, PDF |
 
 Each `ErasureStep` contains `store`, status, attempt count, and safe completion/failure metadata. Deleted content is never copied into the Erasure Request.
+
+Current persistence uses UUID identifiers. Requests retain `team_id`, scope, actor (null for scheduled retention), origin, timestamps, and outcome independently of the target's foreign keys. Steps use stores `pending_work`, `ai_data`, `objects`, `generated_pdfs`, `redis`, and `backend_records`; each exposes `attempts`, `deleted_records`, `deleted_objects`, `failure_code`, and `completed_at`. Internal deletion inventories contain exact identifiers and object references, never deleted content, and are purged when the request completes.
 
 ## ReproducibilityMetadata
 
