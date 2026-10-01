@@ -39,7 +39,9 @@ def validate_document(path: Path, root: Path) -> list[str]:
                     try:
                         json.loads("\n".join(block))
                     except json.JSONDecodeError as error:
-                        errors.append(f"{path}:{start + error.lineno}: invalid JSON example")
+                        errors.append(
+                            f"{path}:{start + error.lineno}: invalid JSON example"
+                        )
                 fence = None
                 block = []
             else:
@@ -65,7 +67,9 @@ def validate_document(path: Path, root: Path) -> list[str]:
                 else path.parent / local_path
             ).resolve()
             if not resolved.is_relative_to(root) or not resolved.exists():
-                errors.append(f"{path}:{number}: missing or out-of-repository local link")
+                errors.append(
+                    f"{path}:{number}: missing or out-of-repository local link"
+                )
     if fence is not None:
         errors.append(f"{path}:{start}: unclosed code fence")
     return errors

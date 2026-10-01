@@ -20,17 +20,19 @@ class DocumentationValidationTests(unittest.TestCase):
         (self.root / "target.md").touch()
         self.assertEqual(
             self.validate(
-                '[local](target.md#heading)\n[root](/target.md)\n'
-                '[web](https://example.com/missing)\n[anchor](#heading)\n'
+                "[local](target.md#heading)\n[root](/target.md)\n"
+                "[web](https://example.com/missing)\n[anchor](#heading)\n"
                 '[reference]: target.md "Title"\n'
                 '```json\n{"valid": true}\n```\n'
-                '```mermaid\nflowchart LR\n A --> B\n```\n'
+                "```mermaid\nflowchart LR\n A --> B\n```\n"
             ),
             [],
         )
 
     def test_missing_local_and_reference_links(self):
-        self.assertEqual(len(self.validate("[missing](absent.md)\n[ref]: absent.md\n")), 2)
+        self.assertEqual(
+            len(self.validate("[missing](absent.md)\n[ref]: absent.md\n")), 2
+        )
 
     def test_out_of_repository_link(self):
         self.assertIn("out-of-repository", self.validate("[escape](../outside.md)")[0])
@@ -39,16 +41,22 @@ class DocumentationValidationTests(unittest.TestCase):
         self.assertIn("invalid JSON", self.validate("```json\n{not json}\n```\n")[0])
 
     def test_unclosed_fence(self):
-        self.assertIn("unclosed code fence", self.validate("```mermaid\nflowchart LR\n")[0])
+        self.assertIn(
+            "unclosed code fence", self.validate("```mermaid\nflowchart LR\n")[0]
+        )
 
     def test_links_inside_code_are_not_validated(self):
         self.assertEqual(self.validate("```text\n[example](absent.md)\n```\n"), [])
 
     def test_nested_shorter_fence_does_not_close_outer_fence(self):
-        self.assertEqual(self.validate("````text\n```\n[example](absent.md)\n````\n"), [])
+        self.assertEqual(
+            self.validate("````text\n```\n[example](absent.md)\n````\n"), []
+        )
 
     def test_conflict_markers(self):
-        self.assertEqual(len(self.validate("<<<<<<< ours\n=======\n>>>>>>> theirs\n")), 3)
+        self.assertEqual(
+            len(self.validate("<<<<<<< ours\n=======\n>>>>>>> theirs\n")), 3
+        )
 
     def test_missing_document(self):
         self.assertIn("cannot read", validate_document(self.document, self.root)[0])
