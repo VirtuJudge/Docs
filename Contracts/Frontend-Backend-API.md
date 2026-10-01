@@ -69,10 +69,14 @@ The backend constructs the URL using the configured frontend_url; the invitation
 | Method | Path | Request | Success | Important errors |
 |---|---|---|---|---|
 | `GET` | `/teams/{team_id}/projects` | cursor, optional search | `200 Page<Project>` | `403` |
-| `POST` | `/teams/{team_id}/projects` | `{name, description?}` | `201 Project` | `422` |
+| `POST` | `/teams/{team_id}/projects` | `{name, description?}` + `Idempotency-Key` | `201 Project` | `403`, `409`, `422` |
 | `GET` | `/projects/{project_id}` | None | `200 Project` | `403`, `404` |
 | `PATCH` | `/projects/{project_id}` | `{name?, description?}` + `If-Match` | `200 Project` | `403`, `412` |
 | `DELETE` | `/projects/{project_id}` | `{confirmation}` + `Idempotency-Key` | `202 ErasureRequest` | `403`, `404`, `409` |
+
+Project creation requires a nonempty `Idempotency-Key` header of at most 255 characters. Keys are scoped to the authenticated User, Team, and `create_project` operation. The request hash covers the validated name and description using canonical JSON; omitted and explicit null descriptions are equivalent, while string contents are preserved exactly. Matching retries return `201` with the same Project ID and its current fields. Reusing a key with a different name or description returns `409 idempotency_key_reused` without creating another Project.
+
+Creation and its idempotency record are committed together. Concurrent matching requests produce one Project. Membership is checked before every creation or replay; a caller whose membership was removed receives `403`. A retry for an access-revoked or purged Project returns `409 project_creation_unavailable` and never recreates it. The idempotency tombstone retains only IDs, operation, key, and hash, with no project content.
 
 ## Assets and direct uploads
 
