@@ -25,12 +25,16 @@ The field definitions in [Data Contracts](./Data-Contracts.md) are normative for
 | `PATCH` | `/teams/{team_id}` | `{name}` + `If-Match` | `200 Team` | `403`, `412` |
 | `GET` | `/teams/{team_id}/members` | cursor query | `200 Page<TeamMembership>` | `403` |
 | `DELETE` | `/teams/{team_id}/members/{user_id}` | confirmation | `204` | `403`, `409 last_owner` |
-| `POST` | `/teams/{team_id}/invitations` | `{email, role:"member"}` + `Idempotency-Key`| `201 TeamInvitation` | `403`, `409 already_member`, `429` |
+| `POST` | `/teams/{team_id}/invitations` | `{email, role:"member"}` + `Idempotency-Key`| `201 TeamInvitation` | `403`, `409 already_member`, `409 idempotency_key_reused`, `429` |
 | `GET` | `/teams/{team_id}/invitations` | cursor query | `200 Page<TeamInvitation>` | `403` |
 | `POST` | `/teams/{team_id}/invitations/{id}/resend` |empty + `Idempotency-Key header`Same key → return the previous response without sending another email. Different key → create a new resend operation and send a new invitation email.| `202 TeamInvitation` | `403`, `409 invitation_not_pending`, `429` |
 | `DELETE` | `/teams/{team_id}/invitations/{id}` | `If-Match` | `204` | `403`, `409 already_consumed` |
 | `GET` | `/invitations/{token}` | public token | `200 InvitationPreview` | `404`, `410 invitation_expired` |
 | `POST` | `/invitations/{token}/accept` | authenticated, empty body | `200 TeamMembership` | `409 email_mismatch`, `410` |
+
+Invitation creation requires an `Idempotency-Key` scoped to the authenticated actor, Team, and `create_invitation` operation. The backend hashes the normalized request (trimmed, case-folded email and effective role, including the default `member` role). An identical retry returns the original invitation with `201` and does not generate a token, send another email, or change delivery state. Reusing a key in the same scope with a different email or role returns `409 idempotency_key_reused` as safe Problem Details. Keys may be reused independently by other actors, Teams, or operations. Authorization is checked on every retry, and concurrent identical requests create one invitation and schedule one email.
+
+Legacy invitations retain their state and tokens, but their old globally scoped keys cannot be replayed because the creating actor was not recorded. A new request is checked against existing pending invitations normally.
 
 Invitation creation schedules a Gmail send after commit. A Gmail-delivery failure does not delete the invitation; the owner sees its delivery state and may resend with a new idempotent command.
 

@@ -47,7 +47,7 @@ Acceptance criteria:
 - Development and staging use a dedicated Gmail or Google Workspace sender account configured through secrets.
 - Automated tests use a fake mail adapter; an allow-listed live smoke test verifies Gmail delivery.
 - Delivery failure leaves the invitation valid and exposes a safe resend state.
-- Repeated requests with the same idempotency key send at most one logical invitation.
+- Repeated creation requests with the same actor, Team, operation, key, and normalized payload send at most one logical invitation, including concurrent retries. Conflicting payloads return `409 idempotency_key_reused`; keys in different scopes remain independent.
 
 ## US-104: Accept an invitation
 
