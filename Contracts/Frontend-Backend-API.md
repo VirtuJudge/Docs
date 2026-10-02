@@ -32,7 +32,7 @@ The field definitions in [Data Contracts](./Data-Contracts.md) are normative for
 | `GET` | `/invitations/{token}` | public token | `200 InvitationPreview` | `404`, `410 invitation_expired` |
 | `POST` | `/invitations/{token}/accept` | authenticated, empty body | `200 TeamMembership` | `409 email_mismatch`, `410` |
 
-Invitation creation schedules a Gmail send after commit. A Gmail-delivery failure does not delete the invitation; the owner sees its delivery state and may resend with a new idempotent command.
+Invitation creation schedules a Gmail send after commit. Replaying the creation request with the same `Idempotency-Key` returns `201` with the existing invitation and its current `ETag`, without scheduling another email or changing its token hash, delivery state, or version. Only the original creation has the raw token available for delivery; the backend never reconstructs it from the stored hash. A Gmail-delivery failure does not delete the invitation; the owner sees its delivery state and may resend with a new idempotent command.
 
 ## Invitation email and frontend routing
 
