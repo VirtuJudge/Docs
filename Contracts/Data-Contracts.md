@@ -46,7 +46,7 @@ This document defines canonical concepts shared across APIs, jobs, stored artifa
 | `email` | string | Yes | Invited address |
 | `role` | enum | Yes | MVP permits `member` |
 | `status` | enum | Yes | `pending`, `accepted`, `expired`, `revoked` |
-| `delivery_status` | enum | Yes | `queued`, `accepted_by_gmail`, `failed` |
+| `delivery_status` | enum | Yes | `queued`, `accepted_by_provider`, `failed` |
 | `delivery_attempts` | integer | Yes | Non-negative count of started sends, including the initial send and failed sends; queuing and idempotent replays do not increment it |
 | `expires_at` | timestamp | Yes | UTC |
 | `created_at` | timestamp | Yes | UTC |

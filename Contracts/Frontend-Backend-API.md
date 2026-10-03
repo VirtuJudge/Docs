@@ -39,11 +39,13 @@ Invitation resend keys are scoped to the authenticated actor, Team, Invitation, 
 
 Legacy global resend keys cannot be attributed to an actor and are invalidated when the scope migration runs. Invitations and existing tokens remain valid; a first resend after migration creates a new scoped operation. Downgrade invalidates scoped keys before restoring global uniqueness. Stop resend traffic while migrating and prefer a forward fix over restoring globally scoped lookup.
 
-Invitation creation schedules a Gmail send after commit. A Gmail-delivery failure does not delete the invitation; the owner sees its delivery state and may resend with a new idempotent command.
+Invitation creation schedules a send through the configured mail provider after commit. A mail-delivery failure does not delete the invitation; the owner sees its delivery state and may resend with a new idempotent command.
 
 `delivery_attempts` starts at zero while queued. Before each initial or resend delivery calls the mail adapter, the backend atomically persists one increment using the invitation's current version. A competing version change prevents that send without changing the persisted counter. Both successful and failed sends count once; queuing a resend and replaying an idempotent request do not increment the counter. Delivery completion updates the delivery status without another increment. Creation and resend responses may precede background delivery; refetch the invitation list for its current count, delivery state, and ETag.
 
 Invitation revocation requires Team Owner authorization and a non-empty `If-Match` header containing the invitation's current ETag. Obtain the current `etag` from the invitation list and send it in quotes, or use the `ETag` response header from creation or resend. Missing or empty headers return `422`; stale or invalid tags, weak tags, and wildcard `*` return `412`. A Team Owner cannot bypass version checking with a wildcard; this endpoint exposes no administrative override. A change between the version check and database update also returns `412`. Rejected revocations leave the invitation unchanged. Already accepted invitations return `409 already_consumed`, other non-pending invitations return `409 invitation_not_pending`, and unknown or other-Team invitations return `404`.
+
+Deploy clients that recognize both `accepted_by_gmail` and `accepted_by_provider` before changing the backend. Both mean provider acceptance, not confirmed recipient delivery. Stop old backend processes and background sends before applying the delivery-status migration and starting the new backend; the PostgreSQL enum rename also updates existing records. Do not run old and new backend versions together across this migration. For rollback, stop the new backend, downgrade the migration, then start the old backend. The tolerant frontend supports either backend version.
 
 ## Invitation email and frontend routing
 

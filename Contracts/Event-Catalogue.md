@@ -48,8 +48,10 @@ Invitation delivery is backend-local, not a Redis message:
 | Status | Meaning |
 |---|---|
 | `queued` | Invitation is committed and the background send is scheduled |
-| `accepted_by_gmail` | Gmail accepted the message for delivery |
+| `accepted_by_provider` | The configured mail provider accepted the message for delivery; recipient receipt is not confirmed |
 | `failed` | Send failed; owner may call the resend endpoint |
+
+Clients must treat legacy `accepted_by_gmail` and `accepted_by_provider` as the same successful submission state during rollout. New backend responses use only `accepted_by_provider`.
 
 Membership creation still depends on consuming the invitation token, not mail-delivery status.
 
