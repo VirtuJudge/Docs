@@ -28,7 +28,7 @@ The field definitions in [Data Contracts](./Data-Contracts.md) are normative for
 | `POST` | `/teams/{team_id}/invitations` | `{email, role:"member"}` + `Idempotency-Key`| `201 TeamInvitation` | `403`, `409 already_member`, `409 idempotency_key_reused`, `429` |
 | `GET` | `/teams/{team_id}/invitations` | cursor query | `200 Page<TeamInvitation>` | `403` |
 | `POST` | `/teams/{team_id}/invitations/{id}/resend` |empty + `Idempotency-Key`. Same scoped key returns current safe Invitation metadata without sending email. Different key creates a new resend operation.| `202 TeamInvitation` | `403`, `404`, `409 invitation_not_pending`, `409 idempotency_conflict`, `412`, `429` |
-| `DELETE` | `/teams/{team_id}/invitations/{id}` | `If-Match` | `204` | `403`, `409 already_consumed` |
+| `DELETE` | `/teams/{team_id}/invitations/{id}` | required `If-Match` | `204` | `403`, `404`, `409 already_consumed`, `412`, `422` |
 | `GET` | `/invitations/{token}` | public token | `200 InvitationPreview` | `404`, `410 invitation_expired` |
 | `POST` | `/invitations/{token}/accept` | authenticated, empty body | `200 TeamMembership` | `409 email_mismatch`, `410` |
 
@@ -40,6 +40,8 @@ Invitation resend keys are scoped to the authenticated actor, Team, Invitation, 
 Legacy global resend keys cannot be attributed to an actor and are invalidated when the scope migration runs. Invitations and existing tokens remain valid; a first resend after migration creates a new scoped operation. Downgrade invalidates scoped keys before restoring global uniqueness. Stop resend traffic while migrating and prefer a forward fix over restoring globally scoped lookup.
 
 Invitation creation schedules a Gmail send after commit. A Gmail-delivery failure does not delete the invitation; the owner sees its delivery state and may resend with a new idempotent command.
+
+Invitation revocation requires Team Owner authorization and a non-empty `If-Match` header containing the invitation's current ETag. Obtain the current `etag` from the invitation list and send it in quotes, or use the `ETag` response header from creation or resend. Missing or empty headers return `422`; stale or invalid tags, weak tags, and wildcard `*` return `412`. A Team Owner cannot bypass version checking with a wildcard; this endpoint exposes no administrative override. A change between the version check and database update also returns `412`. Rejected revocations leave the invitation unchanged. Already accepted invitations return `409 already_consumed`, other non-pending invitations return `409 invitation_not_pending`, and unknown or other-Team invitations return `404`.
 
 ## Invitation email and frontend routing
 
