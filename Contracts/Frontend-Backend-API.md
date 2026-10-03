@@ -291,7 +291,11 @@ The final Evaluation is created with the Report after Q&A. Before that point, th
 
 Status is `pending`, `in_progress`, `completed`, or `failed`. User access is revoked when the request is accepted, not when the physical purge finishes.
 
-Deletion requires Team Owner permission. Responses include `Location: /api/v1/erasure-requests/{id}`. Repeated requests for the same target return its existing Erasure Request, including after the target has been purged. A reused idempotency key with a different confirmation returns `409`. Outsiders receive `404`. Status remains accessible to current members of the recorded Team after target deletion and includes per-store status, attempts, safe failure codes, and deletion counts.
+Deletion requires Team Owner permission. Responses include `Location: /api/v1/erasure-requests/{id}`. Repeated requests for the same target return its existing Erasure Request, including after the target has been purged.
+
+Idempotency keys are scoped to the actor, target scope, target ID, and delete operation; the canonical and team-scoped project routes share this scope. Every accepted key, including later keys for an existing Erasure Request, records a hash of its confirmation. Reusing that key with a different confirmation returns `409 idempotency_conflict`. Keys used by another actor or for another target do not conflict. Replay rechecks current Team Owner permission and any parent path before returning the existing request, whose status may have advanced.
+
+Outsiders receive `404`. Status remains accessible to current members of the recorded Team after target deletion and includes per-store status, attempts, safe failure codes, and deletion counts.
 
 An existing session stream receives the acceptance notification and closes. Reconnecting after revocation returns `404`; subsequent progress is available from the Erasure Request. Direct object URLs already issued remain valid until their short TTL expires or their object is deleted; API access and issuance of new URLs are revoked immediately.
 
