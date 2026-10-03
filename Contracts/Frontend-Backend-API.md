@@ -81,7 +81,9 @@ The backend constructs the URL using the configured frontend_url; the invitation
 | `POST` | `/teams/{team_id}/projects` | `{name, description?}` + `Idempotency-Key` | `201 Project` | `403`, `409`, `422` |
 | `GET` | `/projects/{project_id}` | None | `200 Project` | `403`, `404` |
 | `PATCH` | `/projects/{project_id}` | `{name?, description?}` + `If-Match` | `200 Project` | `403`, `412` |
-| `DELETE` | `/projects/{project_id}` | `{confirmation}` + `Idempotency-Key` | `202 ErasureRequest` | `403`, `404`, `409` |
+| `DELETE` | `/projects/{project_id}` | Required `{confirmation}` + `Idempotency-Key` | `202 ErasureRequest` | `403`, `404`, `409`, `422` |
+
+Project deletion requires a JSON body with a non-empty string `confirmation` that exactly matches the current Project name, including case and whitespace. A missing body, missing field, null, empty string, or non-string value returns `422 validation_failed`. A name mismatch returns `409` with detail `confirmation_required`. Rejected confirmation must not create an Erasure Request or revoke Project access. Only a Team Owner may request deletion. A confirmed request returns the existing durable Erasure Request on an idempotent retry.
 
 Project creation requires a nonempty `Idempotency-Key` header of at most 255 characters. Keys are scoped to the authenticated User, Team, and `create_project` operation. The request hash covers the validated name and description using canonical JSON; omitted and explicit null descriptions are equivalent, while string contents are preserved exactly. Matching retries return `201` with the same Project ID and its current fields. Reusing a key with a different name or description returns `409 idempotency_key_reused` without creating another Project.
 
