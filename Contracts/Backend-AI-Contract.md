@@ -112,7 +112,7 @@ The report result must include team feedback and one feedback section for every 
 
 Erasure jobs have no Analysis Attempt. Their queue envelope may omit `practice_session_id` and `analysis_attempt`; those fields remain required for analysis and report jobs. No sentinel resource IDs are used.
 
-The payload also carries server-derived `practice_session_ids`, `answer_ids`, `asset_version_ids`, and `retention_only` (default false). Project erasure enumerates every affected session and answer, including an empty list for a Project with no sessions. Explicit session/project deletion removes all AI-owned artifacts, reports, evaluation files, vectors, checkpoints, and scratch media. Retention erasure removes source-linked raw-media derivatives while preserving report/evaluation and answer transcript artifacts. The worker must never delete backend upload objects.
+The payload also carries server-derived `practice_session_ids`, `answer_ids`, `asset_version_ids`, and `retention_only` (default false). Project erasure enumerates every affected session and answer, including an empty list for a Project with no sessions. Explicit session/project deletion removes all AI-owned artifacts, reports, evaluation files, vectors, checkpoints, and scratch media. Retention erasure removes source-linked raw-media derivatives while preserving report/evaluation and answer transcript artifacts. Explicit asset erasure uses `scope: "asset"`, `retention_only: false`, and the complete `asset_version_ids` inventory. The worker deletes AI document records and embeddings for those exact source versions even when `practice_session_ids` is empty; unrelated source versions remain. Any draft sessions included by the Backend are also purged. The worker must never delete backend upload objects.
 
 An erasure completion is validated against its durable Erasure Request and trace ID, independently of deleted product ancestry. Duplicate sequence updates have no repeated side effects.
 
@@ -222,6 +222,14 @@ Exactly three primary questions are required.
 ```
 
 `follow_up` may be absent when the question limit is reached or there is no grounded reason to ask one. When present, its text is at most 1,000 characters and `evidence_ids` contains at least one grounding Evidence reference.
+
+Every accepted current-attempt answer completion saves that Answer's transcript and assessment references, even when a newer answer or skip exists. Recency limits follow-up scheduling only; it must not discard valid assessment data. Duplicate, cancelled, and superseded callbacks retain their existing safeguards.
+
+Finishing Q&A records the user's final answer or skip without waiting for object storage. Report generation waits durably for all required submitted-answer analyses and artifacts. A later completion or retry of a transient storage operation resumes report preparation without repeating the user's command or producing duplicate reports. The existing periodic dispatcher retries report preparation even when no later callback arrives. At most one `generate_report` job is scheduled for each Analysis Attempt; the backend enforces this in persistence.
+
+Backend migration `6f7a8b9c0d1e` adds the report-job uniqueness invariant. It refuses an upgrade over legacy duplicate report jobs rather than deleting history. Inspect and reconcile any duplicate `generate_report` jobs for the same `attempt_id` before applying the migration.
+
+Presenter mapping reads only speaker labels from the current attempt's completed, backend-accepted session-analysis result. Missing, cancelled, failed, or superseded analysis cannot provide labels. Accepted mappings continue to supply individual presenter attribution to report generation.
 
 ### Completed `generate_report` payload
 
