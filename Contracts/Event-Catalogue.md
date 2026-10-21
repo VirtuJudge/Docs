@@ -20,7 +20,7 @@ All four use the queue and callback shapes in [Backend/AI Contract](./Backend-AI
 | `started` | Worker accepted the current job | Mark it running and the session active |
 | `progress` | One internal stage changed | Save safe display progress and notify browser |
 | `completed` | Job produced its typed result | Validate result and advance product state |
-| `failed` | Retries were exhausted or failure is permanent | Save safe failure and expose retry where allowed |
+| `failed` | Retries were exhausted or failure is permanent | Atomically fail the current job, attempt, and session; notify after commit |
 | `cancelled` | Worker observed cancellation | Mark the job and attempt cancelled |
 
 Updates are idempotent by `job_id` and increasing `sequence`. The backend ignores older updates and results from cancelled or superseded jobs.

@@ -266,6 +266,12 @@ Exactly three primary questions are required.
 }
 ```
 
+For a current `analyze_session`, `analyze_answer`, or `generate_report` job, a failed update atomically marks the AI Job, Analysis Attempt, and Practice Session `failed`. Failure metadata stays on the job and attempt. After commit, the backend publishes `practice_session.updated.v1` with the committed session version and current attempt number. Duplicate, cancelled, and superseded callbacks do not change current product state or publish a new failure notification. Other jobs from a failed attempt cannot apply results or progress.
+
+Recovery uses `POST /practice-sessions/{session_id}/retries` with a new idempotency key. It starts a new Analysis Attempt from the immutable Session Manifest, including after an answer or report failure. It does not resume the failed job. The user repeats Q&A and speaker mapping for the new attempt. Earlier attempts, Q&A Rounds, Questions, Answers, and jobs remain recorded; only the latest attempt's Q&A Round is exposed and accepts changes. The worker's `retryable` field describes its failure; it does not block an explicit new user attempt.
+
+Deploy the Backend Q&A-per-attempt migration before this recovery behavior. It removes the one-round-per-session restriction while retaining one round per attempt, and repairs active sessions whose latest attempt is already failed. Repaired states are retained on downgrade. Roll back application code only before sessions have multiple rounds; after that, prefer a forward fix. The migration refuses downgrade when multiple rounds exist rather than deleting history.
+
 Provider bodies and stack traces stay in restricted AI logs.
 
 ## Job status endpoint

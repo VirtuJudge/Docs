@@ -227,6 +227,8 @@ Returns `201 PracticeSession`. The backend validates ownership and asset state. 
 | `POST` | `/practice-sessions/{session_id}/retries` | empty + idempotency | `202 AnalysisAttempt` | `403`, `409 retry_not_allowed` |
 | `PUT` | `/practice-sessions/{session_id}/speaker-mappings` | mappings + `If-Match` | `200 SpeakerMapping[]` | `409 analysis_not_ready`, `422 invalid_label` |
 
+Failure of presentation analysis, answer analysis, or report generation marks the Practice Session and its current Analysis Attempt `failed`. A committed `practice_session.updated.v1` notification tells the client to refetch. The creator or Team Owner can use `/retries` with a new idempotency key to start a new attempt from the same frozen Session Manifest. Replaying the key returns that attempt. Recovery repeats analysis, Q&A, and speaker mapping; earlier rounds remain stored but cannot be answered. Q&A reads return only the latest attempt's round, or `409 questions_not_ready` until it exists.
+
 Analysis start request:
 
 ```json
