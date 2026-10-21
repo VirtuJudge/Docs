@@ -195,7 +195,11 @@ Important errors (returned as `application/problem+json`):
 | `GET` | `/assets/{asset_id}/versions/{version_id}` | None | `200 AssetVersion` | Exact version details |
 | `POST` | `/assets/{asset_id}/versions/{version_id}/download-intents` | None | `200 DownloadIntent` | Signed GET URL for verified version |
 | `POST` | `/assets/{asset_id}/download-intents` | None | `200 DownloadIntent` | Short-lived signed GET URL for verified current version |
-| `DELETE` | `/assets/{asset_id}` | None | `202 ErasureRequest` | Fails when immutable active manifest still requires asset |
+| `DELETE` | `/assets/{asset_id}` | Required `{confirmation}` + `Idempotency-Key` | `202 ErasureRequest` | Team Owner only; conflicts with retained immutable references |
+
+Asset deletion requires a non-empty string `confirmation` exactly matching the current asset file name, including case and whitespace. Invalid or missing confirmation returns `422 validation_failed`; a mismatch returns `409 confirmation_required`. The project-scoped alias `/projects/{project_id}/assets/{asset_id}` has the same request and response and validates the parent path. Only a Team Owner may delete an asset. An existing retention Erasure Request for the same asset returns `409 conflict` for explicit deletion; its audit, status, and retry inventory remain intact. A frozen or retained non-draft manifest, answer-media reference, or report PDF reference returns `409 conflict`; optional draft document references are detached, and a draft session whose presentation is deleted is included in the same erasure scope. Deleting a draft presentation preserves other Supporting Document Assets; only eligible draft-owned answer audio and report PDFs join its erasure inventory.
+
+Acceptance durably inventories every version and relevant object prefix, immediately revokes access and new upload/download intents, and returns `Location` for the Erasure Request. Storage failures leave the inventory and a truthful pending/in-progress or failed status available for retry. Cleanup waits for outstanding upload grants and reconciles prefixes before completion, including assets with more than 100 versions. Asset rows and cleanup inventory are purged only after all required stores confirm deletion. Explicit asset erasure also removes AI records and embeddings for exactly those source versions, even when no retained session refers to them.
 
 ## Practice Sessions
 
@@ -226,6 +230,8 @@ Returns `201 PracticeSession`. The backend validates ownership and asset state. 
 | `POST` | `/practice-sessions/{session_id}/cancel` | `{reason?}` + idempotency | `202 PracticeSession` | `403`, `409 terminal_state` |
 | `POST` | `/practice-sessions/{session_id}/retries` | empty + idempotency | `202 AnalysisAttempt` | `403`, `409 retry_not_allowed` |
 | `PUT` | `/practice-sessions/{session_id}/speaker-mappings` | mappings + `If-Match` | `200 SpeakerMapping[]` | `409 analysis_not_ready`, `422 invalid_label` |
+
+Failure of presentation analysis, answer analysis, or report generation marks the Practice Session and its current Analysis Attempt `failed`. A committed `practice_session.updated.v1` notification tells the client to refetch. The creator or Team Owner can use `/retries` with a new idempotency key to start a new attempt from the same frozen Session Manifest. Replaying the key returns that attempt. Recovery repeats analysis, Q&A, and speaker mapping; earlier rounds remain stored but cannot be answered. Q&A reads return only the latest attempt's round, or `409 questions_not_ready` until it exists.
 
 Analysis start request:
 
@@ -261,6 +267,8 @@ Each user may appear once unless the diarization correction flow explicitly join
 | `POST` | `/questions/{question_id}/skip` | `{reason?}` + idempotency | `200 Answer` with `skipped` | `409 question_not_active` |
 
 Only one question is active at a time. A draft recording may be replaced before submission. Submitted and skipped answers are immutable. The backend advances the current question atomically and never creates more than three primary and two follow-up questions.
+
+A final skip succeeds independently of earlier answer analysis or temporary object-storage outages. The backend durably waits for required answer results before preparing the report, and resumes when those results become available. Users do not need to repeat an accepted skip.
 
 ## Evaluations and reports
 
