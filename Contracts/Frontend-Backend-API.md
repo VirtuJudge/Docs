@@ -257,7 +257,7 @@ Speaker mapping request:
 }
 ```
 
-Each user may appear once unless the diarization correction flow explicitly joins multiple labels. Unknown labels or users outside the team are rejected. `PUT` replaces the whole collection for the current Analysis Attempt under the session ETag: omitted labels become unmapped, and `mappings: []` clears every assignment. Each label may appear once; a repeated label returns `422 invalid_label`. The response is the stored collection ordered by label.
+Each user may appear once unless the diarization correction flow explicitly joins multiple labels. Unknown labels or users outside the team are rejected. `PUT` replaces the whole collection for the current Analysis Attempt under the session ETag: omitted labels become unmapped, and `mappings: []` clears every assignment. Each label may appear once; a repeated label returns `422 invalid_label`. The response is the stored collection ordered by label. Removing a Team Member detaches their speaker mappings in the same transaction: the labels stay as anonymous presenters and no longer name the removed member. Reports already generated keep their stored presenter snapshot.
 
 ## Q&A
 
