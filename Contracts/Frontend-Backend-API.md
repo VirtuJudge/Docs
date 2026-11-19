@@ -540,7 +540,7 @@ data: {"sequence":189,"practice_session_id":"01J2X3Y4Z5A6B7C8D9E0F1G2H3","reason
 }
 ```
 
-Clients must not inspect cursor contents. Default page size is 20; maximum is 100.
+Clients must not inspect cursor contents. Default page size is 20; maximum is 100. Practice Session and Analysis Attempt lists reject a malformed `cursor` with `422 validation_failed` Problem Details.
 
 ## HTTP status policy
 
